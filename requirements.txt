@@ -1,0 +1,6 @@
+streamlit
+pymongo
+transformers
+torch
+pandas
+python-dotenv
