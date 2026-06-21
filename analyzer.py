@@ -8,7 +8,16 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-MODEL_NAME = os.getenv("MODEL_NAME", "lxyuan/distilbert-base-multilingual-cased-sentiments-student")
+def get_secret(key, default):
+    try:
+        import streamlit as st
+        if key in st.secrets:
+            return st.secrets[key]
+    except Exception:
+        pass
+    return os.getenv(key, default)
+
+MODEL_NAME = get_secret("MODEL_NAME", "lxyuan/distilbert-base-multilingual-cased-sentiments-student")
 VISION_MODEL_NAME = "trpakov/vit-face-expression"
 
 # Global pipeline variables

@@ -8,8 +8,17 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
-MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
-DB_NAME = os.getenv("DB_NAME", "sentiment_analyzer")
+def get_secret(key, default):
+    try:
+        import streamlit as st
+        if key in st.secrets:
+            return st.secrets[key]
+    except Exception:
+        pass
+    return os.getenv(key, default)
+
+MONGO_URI = get_secret("MONGO_URI", "mongodb://localhost:27017/")
+DB_NAME = get_secret("DB_NAME", "sentiment_analyzer")
 
 # Global variables for db status
 _db_type = "sqlite"
