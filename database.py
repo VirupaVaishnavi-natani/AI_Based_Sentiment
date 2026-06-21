@@ -2,6 +2,7 @@ import os
 import uuid
 import datetime
 import sqlite3
+from urllib.parse import urlparse
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -24,7 +25,7 @@ def init_db():
         from pymongo import MongoClient
         from pymongo.errors import ServerSelectionTimeoutError, ConnectionFailure
         
-        print(f"Attempting to connect to MongoDB at {MONGO_URI}...")
+        print(f"Attempting to connect to MongoDB...")
         # 2-second timeout for server selection
         client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=2000)
         client.admin.command('ping')
@@ -69,11 +70,21 @@ def init_db():
 
 def get_db_status():
     if _db_type == "mongodb":
-        return {
-            "type": "MongoDB",
-            "status": "Connected",
-            "host": MONGO_URI.split("@")[-1] if "@" in MONGO_URI else MONGO_URI
-        }
+        try:
+            # Securely parse URI to isolate the hostname and drop passwords/URL parameters
+            parsed = urlparse(MONGO_URI)
+            clean_host = parsed.hostname if parsed.hostname else "Remote Cluster"
+            return {
+                "type": "MongoDB",
+                "status": "Connected",
+                "host": clean_host
+            }
+        except Exception:
+            return {
+                "type": "MongoDB", 
+                "status": "Connected", 
+                "host": "Protected Cluster Location"
+            }
     else:
         return {
             "type": "SQLite (Local Fallback)",
@@ -152,8 +163,10 @@ def get_reviews_history(limit=50, offset=0, sentiment_filter=None, search_query=
         params.append(sentiment_filter.lower())
         
     if search_query:
-        query += " AND text LIKE ?"
-        params.append(f"%{search_query}%")
+        # Escape wildcards (\, %, _) to prevent search-input DOS attacks in SQLite
+        clean_query = search_query.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
+        query += " AND text LIKE ? ESCAPE '\\'"
+        params.append(f"%{clean_query}%")
         
     query += " ORDER BY timestamp DESC LIMIT ? OFFSET ?"
     params.extend([limit, offset])
@@ -258,9 +271,13 @@ def delete_review(review_id):
     if _db_type == "mongodb":
         try:
             from bson.objectid import ObjectId
-            result = _mongo_db.reviews.delete_one({"_id": ObjectId(review_id)})
-            if result.deleted_count > 0:
-                return True
+            # Only attempt Mongo deletion if id is a valid 24-character hex ObjectId layout
+            if ObjectId.is_valid(review_id):
+                result = _mongo_db.reviews.delete_one({"_id": ObjectId(review_id)})
+                if result.deleted_count > 0:
+                    return True
+            else:
+                print(f"Skipping Mongo removal: ID '{review_id}' belongs to local SQLite structure.")
         except Exception as e:
             print(f"MongoDB delete failed: {e}. Trying SQLite fallback.")
             init_db()
